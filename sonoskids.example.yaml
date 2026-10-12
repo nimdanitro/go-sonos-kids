@@ -1,0 +1,27 @@
+# Example configuration for sonoskids.
+#
+# Copy to ./sonoskids.yaml or ~/.config/sonoskids/config.yaml and restrict it
+# (it holds secrets):  chmod 600 sonoskids.yaml
+# Use --config <file> to load a file from somewhere else.
+
+
+# --- `sonoskids serve` ---------------------------------------------------
+addr: 127.0.0.1:8080        # use 0.0.0.0:8080 to reach it from other devices
+# db: /var/lib/sonoskids/sonoskids.db   # default: <user config dir>/sonoskids/sonoskids.db
+# migrate_on_startup: true  # false = run `sonoskids migrate up` yourself; serve then refuses an outdated database
+admin_token: change-me      # protects /admin; the admin API is off while empty
+country: CH                 # artist import lists only releases available there
+
+# Artist import ("add every album of an artist"). Both are optional; each
+# service is enabled once it has a client ID and secret.
+spotify:                    # https://developer.spotify.com/dashboard  (create an app)
+  client_id: ""
+  client_secret: ""
+tidal:                      # https://developer.tidal.com  (create an app)
+  client_id: ""
+  client_secret: ""
+
+# --- speaker commands (play, favorites, speakers) ------------------------
+# speaker: Globi           # default room/group/IP, so you can leave out -s
+# discover_timeout: 3s      # how long to wait for speakers to answer
+# no_cache: false           # true = always rediscover via SSDP
