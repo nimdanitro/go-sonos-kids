@@ -133,9 +133,15 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Installs ko and logs in to ghcr.io with the workflow's token.
+      # setup-ko skips its own ghcr.io login when KO_DOCKER_REPO is already set
+      # (as it is here), so the login is explicit.
       - name: Set up ko
         uses: ko-build/setup-ko@61b4d1d396f5b2e7d6bb6fefdce3dc38d1a13445 # v0.10
+
+      - name: Log in to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | ko login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
       - name: Image tags and labels
         id: meta
