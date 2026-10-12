@@ -1,4 +1,6 @@
 # Local build output and secrets
 /sonoskids
+/go-sonos-kids
 /sonoskids.yaml
 /sonoskids.yml
+/dist/

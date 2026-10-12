@@ -1,0 +1,20 @@
+# ko builds the container image straight from the Go source, so there is no
+# Dockerfile. The UI has to be built first: ui/build is embedded in the binary.
+#
+# The default base image is a minimal, non-root one without a shell.
+defaultPlatforms:
+  - linux/amd64
+  - linux/arm64 # Raspberry Pi
+builds:
+  - id: sonoskids
+    main: .
+    env:
+      - CGO_ENABLED=0 # the SQLite driver is pure Go
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      # `index` yields "" instead of an error when VERSION is not set, so a
+      # local `ko build` works; the binary then reports "dev".
+      - -X main.version={{ index .Env "VERSION" }}
+      - -X main.commit={{ .Git.FullCommit }}

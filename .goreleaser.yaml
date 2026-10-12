@@ -1,0 +1,57 @@
+version: 2
+
+# Builds the release binaries and creates the GitHub release. The container image
+# is published by the CI workflow (ko), so there is no `kos`/`dockers` section.
+# The release notes come from git-cliff (cliff.toml) via --release-notes.
+
+project_name: sonoskids
+
+before:
+  hooks:
+    # The UI is embedded in the binary: stop right here rather than ship one without it.
+    - test -f ui/build/index.html
+
+builds:
+  - id: sonoskids
+    main: .
+    binary: sonoskids
+    env:
+      - CGO_ENABLED=0 # the SQLite driver is pure Go, so these cross-compile cleanly
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7" # 32-bit Raspberry Pi OS
+    ignore:
+      - goos: darwin
+        goarch: arm
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version=v{{ .Version }}
+      - -X main.commit={{ .FullCommit }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - sonoskids.example.yaml
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-snapshot.{{ .Now.Format "20060102150405" }}+{{ .ShortCommit }}'
+
+release:
+  prerelease: auto # v1.0.0-rc.1 is marked as a pre-release
+  make_latest: "{{ not .Prerelease }}"
+  mode: replace

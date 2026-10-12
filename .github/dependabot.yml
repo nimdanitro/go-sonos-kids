@@ -1,0 +1,80 @@
+version: 2
+
+# Dependabot opens a pull request for outdated dependencies once a week; CI runs
+# on each one. Related packages are grouped so that they arrive together.
+# Commit messages are Conventional Commits (chore(deps): ..., ci(deps): ...),
+# which the release notes understand.
+#
+# There is no docker ecosystem entry: the container image is built by ko from
+# the Go source, so there is no Dockerfile to update.
+
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      spf13:
+        patterns:
+          - "github.com/spf13/*"
+      modernc:
+        patterns:
+          - "modernc.org/*"
+      golang-x:
+        patterns:
+          - "golang.org/x/*"
+
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    # Dependabot puts each dependency in the first group that matches, so the
+    # specific groups come before the catch-all development-dependencies one.
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+      vite:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+      oxc:
+        patterns:
+          - "oxlint*"
+          - "oxfmt"
+      development-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - "*"

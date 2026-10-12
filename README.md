@@ -20,6 +20,34 @@ SONOSKIDS_ADMIN_TOKEN=secret ./sonoskids serve --addr :8080
   API call needs the admin token. Without a token the admin API is disabled.
 - Database: `~/.config/sonoskids/sonoskids.db` (SQLite, `--db` to change).
 
+## Container
+
+Every push to `main` and every release publishes a multi-arch (amd64/arm64)
+image to `ghcr.io/nimdanitro/go-sonos-kids`, built with [ko](https://ko.build)
+(distroless, runs as a non-root user).
+
+```sh
+mkdir -p data && chmod 777 data   # the image runs as uid 65532
+podman run -d --name sonoskids --network host \
+  -v "$PWD/data:/data:Z" \
+  -e SONOSKIDS_DB=/data/sonoskids.db \
+  -e SONOSKIDS_ADDR=:8080 \
+  -e SONOSKIDS_ADMIN_TOKEN=secret \
+  ghcr.io/nimdanitro/go-sonos-kids:latest serve
+```
+
+- The command is `serve` (the image has an entrypoint, no default command).
+- `--network host` is needed: Sonos discovery uses SSDP multicast, which does
+  not cross a bridge network.
+- Without `SONOSKIDS_DB` the database lands in the container's home directory
+  and is lost with the container; mount a volume.
+- The default listen address is `127.0.0.1:8080`; set `SONOSKIDS_ADDR=:8080`
+  to be reachable from other devices.
+- `:Z` is for SELinux hosts (Fedora); it is harmless elsewhere. With Docker,
+  drop `:Z`.
+- A private package needs `docker login ghcr.io` with a token that has
+  `read:packages`.
+
 ## Configuration
 
 Every command is configured with flags, environment variables or a YAML config
@@ -170,7 +198,31 @@ cd ui && yarn dev                     # Vite dev server on :5173 (also /admin), 
 ```
 
 UI checks (same oxlint/oxfmt setup as sitrep): `yarn lint`, `yarn fmt:check`,
-`yarn typecheck`. Go: `go vet ./... && go test ./...`.
+`yarn typecheck`. Go: `go vet ./... && golangci-lint run && go test ./...`.
+
+## CI and releases
+
+`.github/workflows/ci.yml` runs on pushes to `main`, pull requests and tags:
+
+1. **UI**: `yarn lint:github`, `fmt:check`, typecheck + build.
+2. **Go**: `go mod tidy -diff`, `golangci-lint` (`.golangci.yaml`), `go test -race`.
+3. **Container image**: built for amd64 and arm64, smoke-tested
+   (`scripts/smoke-test-image.sh`), then pushed to ghcr.io (not from pull
+   requests). Tags: branch, `pr-N`, `sha-…`, and on release tags the semver
+   tags plus `latest`.
+4. **GitHub release** (tags `v*` only): binaries for linux
+   amd64/arm64/armv7 and macOS amd64/arm64 (GoReleaser, `.goreleaser.yaml`) with
+   release notes from the commit history (git-cliff, `cliff.toml`).
+
+To release, tag and push: `git tag v1.0.0 && git push origin v1.0.0`. A tag
+such as `v1.0.0-rc.1` creates a pre-release (no `latest` image).
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org)
+(`feat`, `fix`, `docs`, `test`, `ci`, `refactor`, `perf`, `chore`, `revert`,
+`security`), since the release notes are grouped by them. Pull requests are
+squash-merged, and `pr-title.yml` checks the title. Dependabot
+(`.github/dependabot.yml`) proposes grouped weekly updates for Go modules, the
+UI's npm packages and the actions.
 
 ## CLI
 

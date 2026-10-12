@@ -1,0 +1,25 @@
+name: PR title
+
+# Commits on main follow Conventional Commits (feat:, fix:, ci:, ...): the release
+# notes are generated from them. Pull requests are squash-merged, so the PR title
+# becomes the commit message, and that is what gets checked here.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  conventional-title:
+    name: Conventional Commit title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write # lets the action explain what is wrong in a comment
+    steps:
+      - uses: ytanikin/pr-conventional-commits@639145d78959c53c43112365837e3abd21ed67c1 # 1.5.2
+        with:
+          task_types: '["feat","fix","docs","test","ci","refactor","perf","chore","revert","security"]'
+          add_label: "false"
