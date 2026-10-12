@@ -150,6 +150,10 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha,prefix=sha-
+          # ko splits --image-label values on commas, and the repository
+          # description (the default for this label) contains some.
+          labels: |
+            org.opencontainers.image.description=Touch-friendly Sonos music player for kids (Go + React, single binary)
 
       - name: Build, smoke-test, and publish
         env:
