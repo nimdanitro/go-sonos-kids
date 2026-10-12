@@ -244,8 +244,11 @@ jobs:
             | grep -vE -- '-(rc|alpha|beta)' \
             | grep -vxF "$current" \
             | head -n1 || true)"
-          echo "range=${previous:+$previous..}$current" >> "$GITHUB_OUTPUT"
-          echo "Changelog range: ${previous:-<start>}..$current"
+          # The first release has no earlier tag, and a bare tag name is not a
+          # valid range for git-cliff; --current covers everything up to it.
+          range="${previous:+$previous..$current}"
+          echo "range=${range:---current}" >> "$GITHUB_OUTPUT"
+          echo "Changelog range: ${range:-everything up to $current}"
 
       - name: Generate the release notes
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
