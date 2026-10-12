@@ -202,7 +202,7 @@ export function Library({
       style={{ ["--accent" as string]: accentFor(profile.id) }}
       className="flex h-full flex-col bg-linear-to-br from-slate-950 via-slate-900 to-indigo-950"
     >
-      <header className="flex items-center gap-3 px-4 pt-3 pb-2">
+      <header className={`flex items-center gap-3 px-4 pt-3 ${openArtist ? "pb-5" : "pb-2"}`}>
         {openArtist ? (
           <>
             <button

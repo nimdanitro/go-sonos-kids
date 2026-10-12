@@ -44,6 +44,12 @@ export interface Status {
   cover_url: string;
   volume: number;
   max_volume: number;
+  /**
+   * The audiobook this server started and that is still playing. Only then is
+   * "start over" offered; music, playlists and content started from the Sonos
+   * app have none.
+   */
+  item_id?: number;
   /** How far through the whole album or queue, 0..1; absent for streams. */
   fraction?: number;
 }

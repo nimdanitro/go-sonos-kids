@@ -136,9 +136,10 @@ function Session({ profile, onSwitch }: { profile: Profile; onSwitch: () => void
 
   /** Start what is playing over from the beginning, forgetting where the kid was. */
   async function restart() {
-    if (!current) return;
+    const id = status?.item_id;
+    if (!id) return;
     try {
-      await api.play(profile.id, current.id, true);
+      await api.play(profile.id, id, true);
       setTimeout(refresh, 1500);
     } catch {
       toast.show(strings.playError);
@@ -170,7 +171,7 @@ function Session({ profile, onSwitch }: { profile: Profile; onSwitch: () => void
           onNext={() => act(() => api.next(profile.id))}
           onTogglePlay={togglePlay}
           onVolume={changeVolume}
-          onRestart={current ? restart : undefined}
+          onRestart={status?.item_id ? restart : undefined}
         />
       ) : (
         <Library

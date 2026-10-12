@@ -133,7 +133,7 @@ export function NowPlaying({
         </div>
       )}
 
-      <div className="flex shrink-0 items-center justify-center portrait:mt-14 landscape:h-full">
+      <div className="flex shrink-0 items-center justify-center portrait:mt-20 landscape:h-full landscape:pt-7">
         <div className="relative animate-pop overflow-hidden rounded-[2rem] bg-slate-800 shadow-2xl ring-8 shadow-black/60 ring-slate-700 portrait:size-[min(40vh,82vw)] landscape:size-[min(66vh,40vw)]">
           <Cover url={cover} title={title} className="size-full text-8xl" />
           {status?.fraction !== undefined && <ProgressBar fraction={status.fraction} />}
