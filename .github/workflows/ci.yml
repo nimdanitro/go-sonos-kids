@@ -151,9 +151,12 @@ jobs:
             type=semver,pattern={{major}}
             type=sha,prefix=sha-
           # ko splits --image-label values on commas, and the repository
-          # description (the default for this label) contains some.
+          # description (the default for this label) contains some, so no
+          # commas here. `source` is what links the package to this repository
+          # on GitHub.
           labels: |
-            org.opencontainers.image.description=Touch-friendly Sonos music player for kids (Go + React, single binary)
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Touch-friendly Sonos music player for kids - Go and React in a single binary
 
       - name: Build, smoke-test, and publish
         env:
