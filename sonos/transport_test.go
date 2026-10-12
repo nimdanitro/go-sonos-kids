@@ -34,12 +34,19 @@ func (f *fakeSpeaker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	action := r.Header.Get("SOAPAction")
 	action = strings.Trim(action[strings.Index(action, "#")+1:], `"`)
+
 	entry := action
 	if action == "Seek" {
-		entry = fmt.Sprintf("Seek(%s=%s)", unitRe.FindStringSubmatch(string(body))[1], targetRe.FindStringSubmatch(string(body))[1])
+		entry = fmt.Sprintf(
+			"Seek(%s=%s)",
+			unitRe.FindStringSubmatch(string(body))[1],
+			targetRe.FindStringSubmatch(string(body))[1],
+		)
 	}
+
 	f.mu.Lock()
 	f.actions = append(f.actions, entry)
+
 	failing := strings.HasPrefix(entry, "Seek(REL_TIME") && f.failRelSeeks > 0
 	if failing {
 		f.failRelSeeks--
@@ -48,10 +55,16 @@ func (f *fakeSpeaker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if failing {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><detail><UPnPError><errorCode>701</errorCode></UPnPError></detail></s:Fault></s:Body></s:Envelope>`)
+		_, _ = fmt.Fprint(
+			w,
+			`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><detail><UPnPError><errorCode>701</errorCode></UPnPError></detail></s:Fault></s:Body></s:Envelope>`,
+		)
+
 		return
 	}
+
 	var inner string
+
 	switch action {
 	case "GetTransportInfo":
 		inner = `<CurrentTransportState>PLAYING</CurrentTransportState>`
@@ -60,46 +73,63 @@ func (f *fakeSpeaker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "GetMediaInfo":
 		inner = `<NrTracks>10</NrTracks>`
 	}
-	fmt.Fprintf(w, `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:%sResponse>%s</u:%sResponse></s:Body></s:Envelope>`, action, inner, action)
+
+	_, _ = fmt.Fprintf( //nolint:gosec // G705: test fixture, not a browser response
+		w,
+		`<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><u:%sResponse>%s</u:%sResponse></s:Body></s:Envelope>`,
+		action,
+		inner,
+		action,
+	)
 }
 
 func (f *fakeSpeaker) log() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
 	return append([]string(nil), f.actions...)
 }
 
 func newFake(t *testing.T, failRelSeeks int) (Speaker, *fakeSpeaker) {
 	t.Helper()
+
 	f := &fakeSpeaker{failRelSeeks: failRelSeeks}
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
+
 	return Speaker{IP: strings.TrimPrefix(srv.URL, "http://"), UUID: "RINCON_TEST"}, f
 }
 
 func TestStatusReportsTrackAndPosition(t *testing.T) {
 	sp, _ := newFake(t, 0)
+
 	st, err := sp.Status(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if st.State != "PLAYING" || st.Title != "Kapitel 2" || st.Album != "Folge 1" || st.Artist != "Conni" {
 		t.Errorf("track details: %+v", st)
 	}
+
 	if st.Track != 3 || st.NumTracks != 10 || st.PositionSec != 125 || st.DurationSec != 640 {
 		t.Errorf("progress: track %d of %d, %ds of %ds", st.Track, st.NumTracks, st.PositionSec, st.DurationSec)
 	}
 }
 
-var acc = Account{Service: Spotify, SN: "228", Token: "tok"}
-var album = Ref{Service: Spotify, Kind: Album, ID: "abc"}
+var (
+	acc   = Account{Service: Spotify, SN: "228", Token: "tok"}
+	album = Ref{Service: Spotify, Kind: Album, ID: "abc"}
+)
 
 func TestPlayFromSeeksToTheTrackThenTheTime(t *testing.T) {
 	sp, f := newFake(t, 2) // the speaker refuses the time seek twice while it starts up
+
 	err := sp.PlayFrom(context.Background(), acc, album, &Resume{Track: 3, Position: 2 * time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	got := strings.Join(f.log(), " > ")
 	// The track is chosen before playing; the time can only be set once it plays, and is retried until it works.
 	want := "RemoveAllTracksFromQueue > AddURIToQueue > SetAVTransportURI > Seek(TRACK_NR=3) > Play > Seek(REL_TIME=0:02:00) > Seek(REL_TIME=0:02:00) > Seek(REL_TIME=0:02:00)"
@@ -113,10 +143,12 @@ func TestPlayFromStillPlaysWhenTheSpeakerWontSeek(t *testing.T) {
 	if err := sp.PlayFrom(context.Background(), acc, album, &Resume{Track: 1, Position: 90 * time.Second}); err != nil {
 		t.Fatalf("a refused seek must not fail playback: %v", err)
 	}
+
 	log := f.log()
 	if !strings.Contains(strings.Join(log, ">"), "Play") {
 		t.Errorf("playback never started: %v", log)
 	}
+
 	if strings.Contains(strings.Join(log, ">"), "TRACK_NR") {
 		t.Errorf("track 1 needs no track seek: %v", log)
 	}
@@ -132,6 +164,7 @@ func TestPlayWithoutResumeNeverSeeks(t *testing.T) {
 		if err := sp.PlayFrom(context.Background(), acc, album, resume); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
+
 		if got := strings.Join(f.log(), " > "); strings.Contains(got, "Seek") {
 			t.Errorf("%s: unexpected seek: %s", name, got)
 		}
@@ -144,6 +177,7 @@ func TestClock(t *testing.T) {
 			t.Errorf("parseClock(%q) = %d, want %d", in, got, want)
 		}
 	}
+
 	for d, want := range map[time.Duration]string{125 * time.Second: "0:02:05", 3600 * time.Second: "1:00:00", 3725*time.Second + 600*time.Millisecond: "1:02:06"} {
 		if got := formatClock(d); got != want {
 			t.Errorf("formatClock(%v) = %q, want %q", d, got, want)

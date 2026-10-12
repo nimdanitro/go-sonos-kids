@@ -32,6 +32,7 @@ func ServiceByName(name string) (Service, bool) {
 	case "spotify":
 		return Spotify, true
 	}
+
 	return Service{}, false
 }
 
@@ -75,12 +76,15 @@ func ParseRef(s string) (Ref, error) {
 	if m := tidalURLRe.FindStringSubmatch(s); m != nil {
 		return Ref{Tidal, Kind(m[1]), m[2]}, nil
 	}
+
 	if m := spotifyURLRe.FindStringSubmatch(s); m != nil {
 		return Ref{Spotify, Kind(m[1]), m[2]}, nil
 	}
+
 	if m := spotifyURIRe.FindStringSubmatch(s); m != nil {
 		return Ref{Spotify, Kind(m[1]), m[2]}, nil
 	}
+
 	switch {
 	case strings.Contains(s, "://"):
 		return Ref{}, fmt.Errorf("unsupported URL %q (Tidal/Spotify albums, playlists, tracks only)", s)
@@ -89,6 +93,7 @@ func ParseRef(s string) (Ref, error) {
 	case uuidRe.MatchString(s):
 		return Ref{Tidal, Playlist, s}, nil
 	}
+
 	return Ref{}, fmt.Errorf("cannot tell what %q is; pass a tidal.com or open.spotify.com URL", s)
 }
 
@@ -99,6 +104,7 @@ func (s Speaker) Account(ctx context.Context, svc Service) (Account, error) {
 	if err != nil {
 		return Account{}, err
 	}
+
 	return accountFromFavorites(svc, favs)
 }
 
@@ -106,20 +112,25 @@ func accountFromFavorites(svc Service, favs []Favorite) (Account, error) {
 	sidRe := regexp.MustCompile(`[?&]sid=` + svc.SID + `(?:&|$)`)
 	snRe := regexp.MustCompile(`[?&]sn=(\d+)`)
 	tokenRe := regexp.MustCompile(`Svc` + svc.Rincon + `-([^-<"]+)-Token`)
+
 	for _, f := range favs {
 		if !sidRe.MatchString(f.URI) {
 			continue
 		}
+
 		m := snRe.FindStringSubmatch(f.URI)
 		if m == nil {
 			continue
 		}
+
 		acc := Account{Service: svc, SN: m[1], Token: "0"}
 		if t := tokenRe.FindStringSubmatch(f.Metadata); t != nil {
 			acc.Token = t[1]
 		}
+
 		return acc, nil
 	}
+
 	return Account{}, fmt.Errorf("no %s favorite found; add a %s item to My Sonos in the Sonos app", svc.Name, svc.Name)
 }
 
@@ -135,12 +146,20 @@ func (a Account) queueItem(r Ref) (queueItem, error) {
 		itemID, uri, class, parent string
 		altMetas                   []string
 	)
+
 	didl := func(parent, class string) string {
-		return fmt.Sprintf(`<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">`+
-			`<item id="%s" parentID="%s" restricted="true"><dc:title></dc:title>`+
-			`<upnp:class>%s</upnp:class>`+
-			`<desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON%s_X_#Svc%s-%s-Token</desc></item></DIDL-Lite>`,
-			html.EscapeString(itemID), html.EscapeString(parent), class, a.Rincon, a.Rincon, a.Token)
+		return fmt.Sprintf(
+			`<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">`+
+				`<item id="%s" parentID="%s" restricted="true"><dc:title></dc:title>`+
+				`<upnp:class>%s</upnp:class>`+
+				`<desc id="cdudn" nameSpace="urn:schemas-rinconnetworks-com:metadata-1-0/">SA_RINCON%s_X_#Svc%s-%s-Token</desc></item></DIDL-Lite>`,
+			html.EscapeString(itemID),
+			html.EscapeString(parent),
+			class,
+			a.Rincon,
+			a.Rincon,
+			a.Token,
+		)
 	}
 	id := url.PathEscape(r.ID)
 	query := func(flags string) string { return fmt.Sprintf("?sid=%s&flags=%s&sn=%s", a.SID, flags, a.SN) }
@@ -154,6 +173,7 @@ func (a Account) queueItem(r Ref) (queueItem, error) {
 		itemID = "1006206cplaylist%2f" + id
 		uri = "x-rincon-cpcontainer:" + itemID + query("8300")
 		parent, class = itemID, "object.container.playlistContainer"
+
 		altMetas = append(altMetas, "search:category:playlist|object.container.playlistContainer.#tidalList")
 	case r.Service == Tidal && r.Kind == Track: // verified against favorites
 		itemID = "10032028track%2F" + id
@@ -176,10 +196,12 @@ func (a Account) queueItem(r Ref) (queueItem, error) {
 	}
 
 	item := queueItem{uri: uri, metas: []string{didl(parent, class)}}
+
 	for _, alt := range altMetas {
 		p, c, _ := strings.Cut(alt, "|")
 		item.metas = append(item.metas, didl(p, c))
 	}
+
 	return item, nil
 }
 
@@ -197,9 +219,17 @@ func (s Speaker) PlayFrom(ctx context.Context, acc Account, r Ref, resume *Resum
 	if err != nil {
 		return err
 	}
-	if _, err := s.call(ctx, avTransportPath, avTransportNS, "RemoveAllTracksFromQueue", arg{"InstanceID", "0"}); err != nil {
+
+	if _, err := s.call(
+		ctx,
+		avTransportPath,
+		avTransportNS,
+		"RemoveAllTracksFromQueue",
+		arg{"InstanceID", "0"},
+	); err != nil {
 		return err
 	}
+
 	var addErr error
 	for _, meta := range item.metas {
 		_, addErr = s.call(ctx, avTransportPath, avTransportNS, "AddURIToQueue",
@@ -209,21 +239,44 @@ func (s Speaker) PlayFrom(ctx context.Context, acc Account, r Ref, resume *Resum
 			break
 		}
 	}
+
 	if addErr != nil {
 		return addErr
 	}
-	if _, err := s.call(ctx, avTransportPath, avTransportNS, "SetAVTransportURI",
-		arg{"InstanceID", "0"}, arg{"CurrentURI", "x-rincon-queue:" + s.UUID + "#0"}, arg{"CurrentURIMetaData", ""}); err != nil {
+
+	if _, err := s.call(
+		ctx,
+		avTransportPath,
+		avTransportNS,
+		"SetAVTransportURI",
+		arg{
+			"InstanceID",
+			"0",
+		},
+		arg{"CurrentURI", "x-rincon-queue:" + s.UUID + "#0"},
+		arg{"CurrentURIMetaData", ""},
+	); err != nil {
 		return err
 	}
+
 	if resume != nil && resume.Track > 1 {
 		_ = s.seek(ctx, "TRACK_NR", strconv.Itoa(resume.Track))
 	}
-	if _, err = s.call(ctx, avTransportPath, avTransportNS, "Play", arg{"InstanceID", "0"}, arg{"Speed", "1"}); err != nil {
+
+	if _, err = s.call(
+		ctx,
+		avTransportPath,
+		avTransportNS,
+		"Play",
+		arg{"InstanceID", "0"},
+		arg{"Speed", "1"},
+	); err != nil {
 		return err
 	}
+
 	if resume != nil && resume.Position >= time.Second {
 		_ = s.seekWhenPlaying(ctx, formatClock(resume.Position))
 	}
+
 	return nil
 }

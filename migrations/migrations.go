@@ -50,7 +50,9 @@ func Up(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
+
 	_, err = p.Up(ctx)
+
 	return err
 }
 
@@ -59,17 +61,22 @@ func Up(ctx context.Context, db *sql.DB) error {
 // bookkeeping table.
 func Pending(ctx context.Context, db *sql.DB) (bool, error) {
 	var tracked int
-	if err := db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'goose_db_version'`).Scan(&tracked); err != nil {
+	if err := db.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'goose_db_version'`,
+	).Scan(&tracked); err != nil {
 		return false, err
 	}
+
 	if tracked == 0 {
 		return true, nil // nothing has ever been applied
 	}
+
 	p, err := NewProvider(db)
 	if err != nil {
 		return false, err
 	}
+
 	return p.HasPending(ctx)
 }
 
@@ -77,8 +84,10 @@ func Pending(ctx context.Context, db *sql.DB) (bool, error) {
 // identifiers in this package, never user input.
 func hasColumn(ctx context.Context, tx *sql.Tx, table, column string) (bool, error) {
 	var n int
+
 	err := tx.QueryRowContext(ctx,
 		fmt.Sprintf(`SELECT COUNT(*) FROM pragma_table_info('%s') WHERE name = ?`, table), column).Scan(&n)
+
 	return n > 0, err
 }
 
@@ -88,5 +97,6 @@ func execAll(ctx context.Context, tx *sql.Tx, statements ...string) error {
 			return err
 		}
 	}
+
 	return nil
 }

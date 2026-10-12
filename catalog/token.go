@@ -25,6 +25,7 @@ func (e *httpError) Error() string {
 	if e.Body != "" {
 		msg += ": " + e.Body
 	}
+
 	return msg
 }
 
@@ -43,25 +44,36 @@ type tokenSource struct {
 func (t *tokenSource) get(ctx context.Context) (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
 	if t.token != "" && time.Now().Add(30*time.Second).Before(t.expires) {
 		return t.token, nil
 	}
+
 	form := url.Values{"grant_type": {"client_credentials"}}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.url, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", err
 	}
+
 	req.SetBasicAuth(t.clientID, t.clientSecret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
 	resp, err := t.client.Do(req)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("token request: HTTP %d (check the client ID and secret): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return "", fmt.Errorf(
+			"token request: HTTP %d (check the client ID and secret): %s",
+			resp.StatusCode,
+			strings.TrimSpace(string(body)),
+		)
 	}
+
 	var tok struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
@@ -69,8 +81,10 @@ func (t *tokenSource) get(ctx context.Context) (string, error) {
 	if err := json.Unmarshal(body, &tok); err != nil || tok.AccessToken == "" {
 		return "", fmt.Errorf("token request: unexpected response")
 	}
+
 	t.token = tok.AccessToken
 	t.expires = time.Now().Add(time.Duration(tok.ExpiresIn) * time.Second)
+
 	return t.token, nil
 }
 
@@ -88,20 +102,26 @@ func (t *tokenSource) getJSON(ctx context.Context, rawURL, accept string, out an
 		if err != nil {
 			return err
 		}
+
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
 			return err
 		}
+
 		req.Header.Set("Authorization", "Bearer "+tok)
+
 		if accept != "" {
 			req.Header.Set("Accept", accept)
 		}
+
 		resp, err := t.client.Do(req)
 		if err != nil {
 			return err
 		}
+
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-		resp.Body.Close()
+		_ = resp.Body.Close()
+
 		switch {
 		case resp.StatusCode == http.StatusUnauthorized && attempt == 0:
 			t.invalidate()
@@ -115,8 +135,10 @@ func (t *tokenSource) getJSON(ctx context.Context, rawURL, accept string, out an
 			if len(text) > 200 {
 				text = text[:200]
 			}
+
 			return &httpError{Status: resp.StatusCode, URL: rawURL, Body: text}
 		}
+
 		return json.Unmarshal(body, out)
 	}
 }

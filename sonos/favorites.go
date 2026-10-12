@@ -24,6 +24,7 @@ func (s Speaker) Favorites(ctx context.Context) ([]Favorite, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var didl struct {
 		Items []struct {
 			ID    string `xml:"id,attr"`
@@ -35,10 +36,12 @@ func (s Speaker) Favorites(ctx context.Context) ([]Favorite, error) {
 	if err := xml.Unmarshal([]byte(field(body, "Result")), &didl); err != nil {
 		return nil, err
 	}
+
 	var out []Favorite
 	for _, it := range didl.Items {
 		out = append(out, Favorite{it.ID, it.Title, it.Res, it.ResMD})
 	}
+
 	return out, nil
 }
 
@@ -49,5 +52,6 @@ func titleTag(title string) string { return "<dc:title>" + html.EscapeString(tit
 func (s Speaker) RenameFavorite(ctx context.Context, id, oldTitle, newTitle string) error {
 	_, err := s.call(ctx, contentDirPath, contentDirNS, "UpdateObject",
 		arg{"ObjectID", id}, arg{"CurrentTagValue", titleTag(oldTitle)}, arg{"NewTagValue", titleTag(newTitle)})
+
 	return err
 }

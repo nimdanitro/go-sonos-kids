@@ -19,6 +19,24 @@ func init() {
 	registerRootFlags(rootCmd.PersistentFlags())
 }
 
+// SetBuildInfo makes `sonoskids --version` report the build. An empty version
+// means a plain `go build`.
+func SetBuildInfo(version, commit string) {
+	if version == "" {
+		version = "dev"
+	}
+
+	if len(commit) > 7 {
+		commit = commit[:7]
+	}
+
+	if commit != "" {
+		version += " (" + commit + ")"
+	}
+
+	rootCmd.Version = version
+}
+
 // Execute runs the root command.
 func Execute(ctx context.Context) error {
 	return rootCmd.ExecuteContext(ctx)

@@ -30,11 +30,13 @@ func (g Group) Matches(want string) bool {
 	if strings.EqualFold(g.Name, want) {
 		return true
 	}
+
 	for _, m := range g.Members {
 		if strings.EqualFold(m.Room, want) || m.IP == want {
 			return true
 		}
 	}
+
 	return g.Coordinator.IP == want
 }
 
@@ -46,6 +48,7 @@ func (g Group) MemberFor(want string) Speaker {
 			return m
 		}
 	}
+
 	return g.Coordinator
 }
 
@@ -55,6 +58,7 @@ func (s Speaker) Topology(ctx context.Context) ([]Group, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var state struct {
 		Groups []struct {
 			Coordinator string `xml:"Coordinator,attr"`
@@ -73,16 +77,22 @@ func (s Speaker) Topology(ctx context.Context) ([]Group, error) {
 	// The zone group state has no model name; fetch each member's device
 	// description in parallel (local HTTP, a few ms each).
 	models := map[string]string{}
-	var mu sync.Mutex
-	var wg sync.WaitGroup
+
+	var (
+		mu sync.Mutex
+		wg sync.WaitGroup
+	)
+
 	for _, zg := range state.Groups {
 		for _, m := range zg.Members {
 			if m.Invisible == "1" {
 				continue
 			}
+
 			wg.Add(1)
 			go func(uuid, loc string) {
 				defer wg.Done()
+
 				if d, err := describe(ctx, loc); err == nil {
 					mu.Lock()
 					models[uuid] = d.Model
@@ -91,34 +101,46 @@ func (s Speaker) Topology(ctx context.Context) ([]Group, error) {
 			}(m.UUID, m.Location)
 		}
 	}
+
 	wg.Wait()
 
 	var groups []Group
+
 	for _, zg := range state.Groups {
-		var g Group
-		var names []string
+		var (
+			g     Group
+			names []string
+		)
+
 		for _, m := range zg.Members {
 			if m.Invisible == "1" {
 				continue // bonded satellite
 			}
+
 			u, err := url.Parse(m.Location)
 			if err != nil {
 				continue
 			}
+
 			sp := Speaker{IP: u.Hostname(), Room: m.ZoneName, UUID: m.UUID, Model: models[m.UUID]}
 			g.Members = append(g.Members, sp)
+
 			names = append(names, m.ZoneName)
 			if m.UUID == zg.Coordinator {
 				g.Coordinator = sp
 			}
 		}
+
 		if g.Coordinator.UUID == "" {
 			continue
 		}
+
 		sort.Strings(names)
 		g.Name = strings.Join(names, " + ")
 		groups = append(groups, g)
 	}
+
 	sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
+
 	return groups, nil
 }

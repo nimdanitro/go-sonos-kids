@@ -60,11 +60,13 @@ func (p *SonosPlayer) group(ctx context.Context, room string) (sonos.Group, erro
 	if err != nil {
 		return sonos.Group{}, err
 	}
+
 	for _, g := range groups {
 		if g.Matches(room) {
 			return g, nil
 		}
 	}
+
 	return sonos.Group{}, fmt.Errorf("speaker %q not found on the network", room)
 }
 
@@ -72,19 +74,24 @@ func (p *SonosPlayer) account(ctx context.Context, sp sonos.Speaker, svc sonos.S
 	p.mu.Lock()
 	acc, ok := p.accounts[svc.Name]
 	p.mu.Unlock()
+
 	if ok {
 		return acc, nil
 	}
+
 	acc, err := sp.Account(ctx, svc)
 	if err != nil {
 		return sonos.Account{}, err
 	}
+
 	p.mu.Lock()
 	if p.accounts == nil {
 		p.accounts = map[string]sonos.Account{}
 	}
+
 	p.accounts[svc.Name] = acc
 	p.mu.Unlock()
+
 	return acc, nil
 }
 
@@ -93,16 +100,19 @@ func (p *SonosPlayer) Play(ctx context.Context, room string, ref sonos.Ref, maxV
 	if err != nil {
 		return err
 	}
+
 	acc, err := p.account(ctx, g.Coordinator, ref.Service)
 	if err != nil {
 		return err
 	}
+
 	member := g.MemberFor(room)
 	if v, err := member.Volume(ctx); err == nil && v > maxVolume {
 		if err := member.SetVolume(ctx, maxVolume); err != nil {
 			return err
 		}
 	}
+
 	return g.Coordinator.PlayFrom(ctx, acc, ref, resume)
 }
 
@@ -111,7 +121,9 @@ func (p *SonosPlayer) Control(ctx context.Context, room, action string) error {
 	if err != nil {
 		return err
 	}
+
 	c := g.Coordinator
+
 	switch action {
 	case "pause":
 		return c.Pause(ctx)
@@ -122,6 +134,7 @@ func (p *SonosPlayer) Control(ctx context.Context, room, action string) error {
 	case "previous":
 		return c.Previous(ctx)
 	}
+
 	return fmt.Errorf("unknown action %q", action)
 }
 
@@ -130,6 +143,7 @@ func (p *SonosPlayer) SetVolume(ctx context.Context, room string, level int) err
 	if err != nil {
 		return err
 	}
+
 	return g.MemberFor(room).SetVolume(ctx, level)
 }
 
@@ -138,11 +152,14 @@ func (p *SonosPlayer) Status(ctx context.Context, room string) (PlayerStatus, er
 	if err != nil {
 		return PlayerStatus{}, err
 	}
+
 	st, err := g.Coordinator.Status(ctx)
 	if err != nil {
 		return PlayerStatus{}, err
 	}
+
 	vol, _ := g.MemberFor(room).Volume(ctx)
+
 	return PlayerStatus{
 		State: st.State, Title: st.Title, Artist: st.Artist, Album: st.Album, CoverURL: st.ArtURI, Volume: vol,
 		Track: st.Track, NumTracks: st.NumTracks, PositionSec: st.PositionSec, DurationSec: st.DurationSec,
@@ -154,12 +171,15 @@ func (p *SonosPlayer) Rooms(ctx context.Context) ([]RoomInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var out []RoomInfo
+
 	for _, g := range groups {
 		for _, m := range g.Members {
 			out = append(out, RoomInfo{Name: m.Room, Model: m.Model})
 		}
 	}
+
 	return out, nil
 }
 

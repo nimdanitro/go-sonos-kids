@@ -26,16 +26,24 @@ type arg struct{ Name, Value string }
 // call performs a SOAP action and returns the raw response body.
 func (s Speaker) call(ctx context.Context, path, ns, action string, args ...arg) ([]byte, error) {
 	var b bytes.Buffer
-	fmt.Fprintf(&b, `<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:%s xmlns:u="%s">`, action, ns)
+	fmt.Fprintf(
+		&b,
+		`<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:%s xmlns:u="%s">`,
+		action,
+		ns,
+	)
+
 	for _, a := range args {
 		fmt.Fprintf(&b, "<%s>%s</%s>", a.Name, html.EscapeString(a.Value), a.Name)
 	}
+
 	fmt.Fprintf(&b, `</u:%s></s:Body></s:Envelope>`, action)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL()+path, &b)
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("Content-Type", `text/xml; charset="utf-8"`)
 	req.Header.Set("SOAPAction", fmt.Sprintf(`"%s#%s"`, ns, action))
 
@@ -43,11 +51,13 @@ func (s Speaker) call(ctx context.Context, path, ns, action string, args ...arg)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s: HTTP %d: %s", action, resp.StatusCode, body)
 	}
+
 	return body, nil
 }
 
@@ -59,9 +69,12 @@ func field(body []byte, name string) string {
 		if err != nil {
 			return ""
 		}
+
 		if se, ok := tok.(xml.StartElement); ok && se.Name.Local == name {
 			var v string
+
 			_ = d.DecodeElement(&v, &se)
+
 			return v
 		}
 	}

@@ -70,12 +70,23 @@ func (t *Tidal) Discography(ctx context.Context, artistID string) (Discography, 
 	var a struct {
 		Data tidalResource `json:"data"`
 	}
-	if err := t.tokens.getJSON(ctx, fmt.Sprintf("%s/artists/%s?countryCode=%s", t.APIBase, id, country), jsonAPI, &a); err != nil {
+	if err := t.tokens.getJSON(
+		ctx,
+		fmt.Sprintf("%s/artists/%s?countryCode=%s", t.APIBase, id, country),
+		jsonAPI,
+		&a,
+	); err != nil {
 		return Discography{}, err
 	}
+
 	d := Discography{Artist: Artist{Name: a.Data.Attributes.Name}}
 
-	next := fmt.Sprintf("%s/artists/%s/relationships/albums?countryCode=%s&include=albums,albums.coverArt", t.APIBase, id, country)
+	next := fmt.Sprintf(
+		"%s/artists/%s/relationships/albums?countryCode=%s&include=albums,albums.coverArt",
+		t.APIBase,
+		id,
+		country,
+	)
 	for page := 0; next != "" && page < 40; page++ {
 		var res struct {
 			Data []struct {
@@ -89,8 +100,10 @@ func (t *Tidal) Discography(ctx context.Context, artistID string) (Discography, 
 		if err := t.tokens.getJSON(ctx, next, jsonAPI, &res); err != nil {
 			return Discography{}, err
 		}
+
 		albums := map[string]tidalResource{}
 		covers := map[string]string{}
+
 		for _, inc := range res.Included {
 			switch inc.Type {
 			case "albums":
@@ -102,14 +115,17 @@ func (t *Tidal) Discography(ctx context.Context, artistID string) (Discography, 
 						best, width = f.Href, f.Meta.Width
 					}
 				}
+
 				covers[inc.ID] = best
 			}
 		}
+
 		for _, ref := range res.Data {
 			al, ok := albums[ref.ID]
 			if !ok {
 				continue
 			}
+
 			out := Album{
 				ID: ref.ID, Title: al.Attributes.Title, Artist: d.Artist.Name,
 				ReleaseDate: meta.NormalizeDate(al.Attributes.ReleaseDate), Type: tidalType(al),
@@ -117,10 +133,13 @@ func (t *Tidal) Discography(ctx context.Context, artistID string) (Discography, 
 			if len(al.Relationships.CoverArt.Data) > 0 {
 				out.CoverURL = covers[al.Relationships.CoverArt.Data[0].ID]
 			}
+
 			d.Albums = append(d.Albums, out)
 		}
+
 		next = t.absolute(res.Links.Next)
 	}
+
 	return d, nil
 }
 
@@ -132,13 +151,16 @@ func (t *Tidal) absolute(next string) string {
 	case strings.HasPrefix(next, "http"):
 		return next
 	}
+
 	base, err := url.Parse(t.APIBase)
 	if err != nil {
 		return ""
 	}
+
 	if strings.HasPrefix(next, base.Path+"/") { // already includes /v2
 		return base.Scheme + "://" + base.Host + next
 	}
+
 	return t.APIBase + next
 }
 
@@ -147,8 +169,10 @@ func tidalType(al tidalResource) string {
 	if kind == "" {
 		kind = strings.ToUpper(al.Attributes.Type)
 	}
+
 	if kind == "SINGLE" {
 		return "single"
 	}
+
 	return "album" // ALBUM, EP and anything unknown
 }

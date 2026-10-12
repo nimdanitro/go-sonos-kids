@@ -43,6 +43,7 @@ func upArtistReleaseDatePlaylist(ctx context.Context, tx *sql.Tx) error {
 	if done, err := hasColumn(ctx, tx, "items", "artist"); err != nil || done {
 		return err
 	}
+
 	return execAll(ctx, tx,
 		`ALTER TABLE items RENAME TO items_old`,
 		itemsV2,

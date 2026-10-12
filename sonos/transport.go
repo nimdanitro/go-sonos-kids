@@ -37,6 +37,7 @@ func (s Speaker) Volume(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	return strconv.Atoi(strings.TrimSpace(field(body, "CurrentVolume")))
 }
 
@@ -45,6 +46,7 @@ func (s Speaker) SetVolume(ctx context.Context, level int) error {
 	level = max(0, min(100, level))
 	_, err := s.call(ctx, renderingPath, renderingNS, "SetVolume",
 		arg{"InstanceID", "0"}, arg{"Channel", "Master"}, arg{"DesiredVolume", strconv.Itoa(level)})
+
 	return err
 }
 
@@ -70,14 +72,18 @@ func parseClock(s string) int {
 	if len(parts) != 3 {
 		return 0
 	}
+
 	total := 0
+
 	for _, p := range parts {
 		n, err := strconv.Atoi(p)
 		if err != nil || n < 0 {
 			return 0
 		}
+
 		total = total*60 + n
 	}
+
 	return total
 }
 
@@ -90,16 +96,19 @@ func formatClock(d time.Duration) string {
 // Status reports transport state and the current track. Call it on the group coordinator.
 func (s Speaker) Status(ctx context.Context) (Status, error) {
 	var st Status
+
 	body, err := s.av(ctx, "GetTransportInfo")
 	if err != nil {
 		return st, err
 	}
+
 	st.State = field(body, "CurrentTransportState")
 
 	body, err = s.av(ctx, "GetPositionInfo")
 	if err != nil {
 		return st, err
 	}
+
 	st.Position = field(body, "RelTime")
 	st.Duration = field(body, "TrackDuration")
 	st.Track, _ = strconv.Atoi(strings.TrimSpace(field(body, "Track")))
@@ -119,13 +128,16 @@ func (s Speaker) Status(ctx context.Context) (Status, error) {
 			return st, fmt.Errorf("parse track metadata: %w", err)
 		}
 	}
+
 	st.Title, st.Artist, st.Album, st.ArtURI = didl.Item.Title, didl.Item.Creator, didl.Item.Album, didl.Item.Art
 	if info, err := s.av(ctx, "GetMediaInfo"); err == nil { // best effort: radio has no queue size
 		st.NumTracks, _ = strconv.Atoi(strings.TrimSpace(field(info, "NrTracks")))
 	}
+
 	if strings.HasPrefix(st.ArtURI, "/") {
 		st.ArtURI = s.baseURL() + st.ArtURI
 	}
+
 	return st, nil
 }
 
@@ -144,15 +156,17 @@ func (s Speaker) seek(ctx context.Context, unit, target string) error {
 // that once playback has actually begun, so retry briefly while it starts up.
 func (s Speaker) seekWhenPlaying(ctx context.Context, target string) error {
 	var err error
-	for attempt := 0; attempt < 8; attempt++ {
+	for range 8 {
 		if err = s.seek(ctx, "REL_TIME", target); err == nil {
 			return nil
 		}
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(300 * time.Millisecond):
 		}
 	}
+
 	return err
 }

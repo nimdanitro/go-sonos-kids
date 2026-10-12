@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,17 +28,25 @@ func artistCatalog(cfg serveConfig) catalog.Service {
 	if cfg.SpotifyClientID != "" && cfg.SpotifyClientSecret != "" {
 		providers["spotify"] = catalog.NewSpotify(cfg.SpotifyClientID, cfg.SpotifyClientSecret, cfg.Country)
 	}
+
 	if cfg.TidalClientID != "" && cfg.TidalClientSecret != "" {
 		providers["tidal"] = catalog.NewTidal(cfg.TidalClientID, cfg.TidalClientSecret, cfg.Country)
 	}
+
 	for _, name := range []string{"spotify", "tidal"} {
 		if providers[name] != nil {
-			log.Printf("artist import enabled for %s (country %s)", name, cfg.Country)
+			slog.Info("artist import enabled", slog.String("provider", name), slog.String("country", cfg.Country))
 		} else {
-			log.Printf("artist import for %s is off (no API credentials)", name)
+			slog.Info("artist import is off, no api credentials", slog.String("provider", name))
 		}
 	}
+
 	return catalog.Service{Providers: providers}
+}
+
+// logSonos adapts printf-style progress messages from the sonos package to slog.
+func logSonos(format string, args ...any) {
+	slog.Info("sonos", slog.String("detail", fmt.Sprintf(format, args...)))
 }
 
 var serveCmd = &cobra.Command{
@@ -47,20 +55,31 @@ var serveCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		cfg := serveConfigFrom(conf)
+
 		if configFileUsed != "" {
-			log.Printf("using config file %s", configFileUsed)
+			slog.Info("using config file", slog.String("path", configFileUsed))
 		}
+
 		if cfg.AdminToken == "" {
-			log.Println("no admin token set (--admin-token, SONOSKIDS_ADMIN_TOKEN or admin_token in the config file): admin API is disabled")
+			slog.Warn(
+				"no admin token set (--admin-token, SONOSKIDS_ADMIN_TOKEN or admin_token in the config file): admin api is disabled",
+			)
 		}
 
 		path, err := dbPath(conf)
 		if err != nil {
 			return err
 		}
+
 		if cfg.MigrateOnStartup {
 			err := migrateUp(cmd.Context(), path, func(r *goose.MigrationResult) {
-				log.Printf("migration applied: %05d %s (%s)", r.Source.Version, filepath.Base(r.Source.Path), r.Duration.Round(time.Millisecond))
+				slog.InfoContext(
+					cmd.Context(),
+					"migration applied",
+					slog.Int64("version", r.Source.Version),
+					slog.String("file", filepath.Base(r.Source.Path)),
+					slog.Duration("duration", r.Duration.Round(time.Millisecond)),
+				)
 			})
 			if err != nil {
 				return fmt.Errorf("migrating the database: %w", err)
@@ -72,11 +91,11 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer st.Close()
+		defer func() { _ = st.Close() }()
 
 		app := server.New(server.Options{
 			Store:      st,
-			Player:     &server.SonosPlayer{Logf: log.Printf},
+			Player:     &server.SonosPlayer{Logf: logSonos},
 			Meta:       meta.NewFetcher(),
 			Catalog:    artistCatalog(cfg),
 			AdminToken: cfg.AdminToken,
@@ -96,23 +115,32 @@ var serveCmd = &cobra.Command{
 			res, err := app.BackfillMetadata(ctx)
 			switch {
 			case err != nil:
-				log.Printf("metadata backfill: %v", err)
+				slog.ErrorContext(ctx, "metadata backfill failed", slog.Any("error", err))
 			case res.Checked > 0:
-				log.Printf("metadata backfill: looked up %d releases, updated %d library entries", res.Checked, res.Updated)
+				slog.InfoContext(
+					ctx,
+					"metadata backfill done",
+					slog.Int("checked", res.Checked),
+					slog.Int("updated", res.Updated),
+				)
 			}
 		}()
 
 		go func() {
 			<-ctx.Done()
+
 			sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
+
 			_ = srv.Shutdown(sctx)
 		}()
 
-		log.Printf("listening on %s (database %s)", cfg.Addr, path)
+		slog.InfoContext(ctx, "listening", slog.String("addr", cfg.Addr), slog.String("database", path))
+
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return fmt.Errorf("serve: %w", err)
 		}
+
 		return nil
 	},
 }

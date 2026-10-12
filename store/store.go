@@ -63,11 +63,14 @@ type Store struct{ db *sql.DB }
 // migrate command uses it directly.
 func OpenDB(path string) (*sql.DB, error) {
 	dsn := "file:" + path + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
+
 	db.SetMaxOpenConns(1) // tiny workload; avoids SQLITE_BUSY entirely
+
 	return db, nil
 }
 
@@ -78,10 +81,12 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if err := migrations.Up(context.Background(), db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+
 	return &Store{db: db}, nil
 }
 
@@ -96,14 +101,17 @@ func OpenNoMigrate(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	pending, err := migrations.Pending(context.Background(), db)
 	if err == nil && pending {
 		err = ErrPendingMigrations
 	}
+
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
+
 	return &Store{db: db}, nil
 }
 
@@ -116,6 +124,7 @@ func mapErr(err error) error {
 	case err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed"):
 		return ErrDuplicate
 	}
+
 	return err
 }
 
@@ -126,22 +135,28 @@ func (s *Store) ListProfiles(ctx context.Context) ([]Profile, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
+
 	var out []Profile
+
 	for rows.Next() {
 		var p Profile
 		if err := rows.Scan(&p.ID, &p.Name, &p.Speaker, &p.MaxVolume, &p.Avatar); err != nil {
 			return nil, err
 		}
+
 		out = append(out, p)
 	}
+
 	return out, rows.Err()
 }
 
 func (s *Store) GetProfile(ctx context.Context, id int64) (Profile, error) {
 	var p Profile
+
 	err := s.db.QueryRowContext(ctx, `SELECT id, name, speaker, max_volume, avatar FROM profiles WHERE id = ?`, id).
 		Scan(&p.ID, &p.Name, &p.Speaker, &p.MaxVolume, &p.Avatar)
+
 	return p, mapErr(err)
 }
 
@@ -152,13 +167,23 @@ func (s *Store) CreateProfile(ctx context.Context, p Profile) (Profile, error) {
 	if err != nil {
 		return Profile{}, mapErr(err)
 	}
+
 	p.ID, _ = res.LastInsertId()
+
 	return p, nil
 }
 
 func (s *Store) UpdateProfile(ctx context.Context, p Profile) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE profiles SET name = ?, speaker = ?, max_volume = ?, avatar = ? WHERE id = ?`,
-		p.Name, p.Speaker, p.MaxVolume, p.Avatar, p.ID)
+	res, err := s.db.ExecContext(
+		ctx,
+		`UPDATE profiles SET name = ?, speaker = ?, max_volume = ?, avatar = ? WHERE id = ?`,
+		p.Name,
+		p.Speaker,
+		p.MaxVolume,
+		p.Avatar,
+		p.ID,
+	)
+
 	return affected(res, err)
 }
 
@@ -174,7 +199,22 @@ const itemCols = `id, profile_id, category, title, cover_url, artist, release_da
 
 func scanItem(row interface{ Scan(...any) error }) (Item, error) {
 	var it Item
-	err := row.Scan(&it.ID, &it.ProfileID, &it.Category, &it.Title, &it.CoverURL, &it.Artist, &it.ReleaseDate, &it.PlayedAt, &it.ProgressJSON, &it.Service, &it.Kind, &it.RefID)
+
+	err := row.Scan(
+		&it.ID,
+		&it.ProfileID,
+		&it.Category,
+		&it.Title,
+		&it.CoverURL,
+		&it.Artist,
+		&it.ReleaseDate,
+		&it.PlayedAt,
+		&it.ProgressJSON,
+		&it.Service,
+		&it.Kind,
+		&it.RefID,
+	)
+
 	return it, err
 }
 
@@ -186,19 +226,25 @@ func (s *Store) ListItems(ctx context.Context, profileID int64, category string)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
+
 	var out []Item
+
 	for rows.Next() {
 		it, err := scanItem(rows)
 		if err != nil {
 			return nil, err
 		}
+
 		out = append(out, it)
 	}
+
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
 	SortItems(out)
+
 	return out, nil
 }
 
@@ -212,24 +258,30 @@ func SortItems(items []Item) {
 		if (a == "") != (b == "") {
 			return a != "", true
 		}
+
 		if a != b {
 			return a < b, true
 		}
+
 		return false, false
 	}
+
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := items[i], items[j]
 		if a.Category != b.Category {
 			return rank[a.Category] < rank[b.Category]
 		}
+
 		if a.Category != CategoryPlaylist {
 			if less, ok := before(strings.ToLower(a.Artist), strings.ToLower(b.Artist)); ok {
 				return less
 			}
+
 			if less, ok := before(a.ReleaseDate, b.ReleaseDate); ok {
 				return less
 			}
 		}
+
 		return a.ID < b.ID
 	})
 }
@@ -243,15 +295,19 @@ func (s *Store) ListIncomplete(ctx context.Context) ([]Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
+
 	var out []Item
+
 	for rows.Next() {
 		it, err := scanItem(rows)
 		if err != nil {
 			return nil, err
 		}
+
 		out = append(out, it)
 	}
+
 	return out, rows.Err()
 }
 
@@ -263,20 +319,42 @@ func (s *Store) GetItem(ctx context.Context, id int64) (Item, error) {
 // AddItem inserts it and returns it with its ID set. ErrDuplicate if the
 // profile already has the same content in that category.
 func (s *Store) AddItem(ctx context.Context, it Item) (Item, error) {
-	res, err := s.db.ExecContext(ctx, `INSERT INTO items (profile_id, category, title, cover_url, artist, release_date, service, kind, ref_id)
+	res, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO items (profile_id, category, title, cover_url, artist, release_date, service, kind, ref_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		it.ProfileID, it.Category, it.Title, it.CoverURL, it.Artist, it.ReleaseDate, it.Service, it.Kind, it.RefID)
+		it.ProfileID,
+		it.Category,
+		it.Title,
+		it.CoverURL,
+		it.Artist,
+		it.ReleaseDate,
+		it.Service,
+		it.Kind,
+		it.RefID,
+	)
 	if err != nil {
 		return Item{}, mapErr(err)
 	}
+
 	it.ID, _ = res.LastInsertId()
+
 	return it, nil
 }
 
 // UpdateItem changes the editable fields: category, title, cover, artist and date.
 func (s *Store) UpdateItem(ctx context.Context, it Item) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE items SET category = ?, title = ?, cover_url = ?, artist = ?, release_date = ? WHERE id = ?`,
-		it.Category, it.Title, it.CoverURL, it.Artist, it.ReleaseDate, it.ID)
+	res, err := s.db.ExecContext(
+		ctx,
+		`UPDATE items SET category = ?, title = ?, cover_url = ?, artist = ?, release_date = ? WHERE id = ?`,
+		it.Category,
+		it.Title,
+		it.CoverURL,
+		it.Artist,
+		it.ReleaseDate,
+		it.ID,
+	)
+
 	return affected(res, err)
 }
 
@@ -287,8 +365,10 @@ func (s *Store) SetPlayed(ctx context.Context, id int64, played bool) error {
 		res, err := s.db.ExecContext(ctx, `UPDATE items SET played_at = '', progress = '' WHERE id = ?`, id)
 		return affected(res, err)
 	}
+
 	at := time.Now().UTC().Format(time.RFC3339)
 	res, err := s.db.ExecContext(ctx, `UPDATE items SET played_at = ? WHERE id = ?`, at, id)
+
 	return affected(res, err)
 }
 
@@ -301,8 +381,10 @@ func affected(res sql.Result, err error) error {
 	if err != nil {
 		return mapErr(err)
 	}
+
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
+
 	return nil
 }

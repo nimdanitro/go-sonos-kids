@@ -16,10 +16,12 @@ var playCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
 		in := bufio.NewReader(cmd.InOrStdin())
+
 		grp, err := pickGroup(ctx, in)
 		if err != nil {
 			return err
 		}
+
 		sp := grp.Coordinator
 
 		var input string
@@ -28,6 +30,7 @@ var playCmd = &cobra.Command{
 		} else {
 			input = prompt(in, "Tidal/Spotify URL (album, playlist or track): ")
 		}
+
 		ref, err := sonos.ParseRef(input)
 		if err != nil {
 			return err
@@ -37,16 +40,21 @@ var playCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
 		if sn := conf.GetString("sn"); sn != "" {
 			acc.SN = sn
 		}
+
 		fmt.Printf("Detected %s account: sn=%s\n", acc.Name, acc.SN)
 
 		fmt.Printf("Playing %s on %s (via %s)...\n", ref, grp.Name, sp.IP)
+
 		if err := sp.Play(ctx, acc, ref); err != nil {
 			return err
 		}
+
 		fmt.Println("Playing.")
+
 		return nil
 	},
 }

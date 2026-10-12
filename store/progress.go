@@ -29,6 +29,7 @@ func ParseProgress(raw string) (p Progress, ok bool) {
 	if raw == "" || json.Unmarshal([]byte(raw), &p) != nil || p.Last < 1 {
 		return Progress{}, false
 	}
+
 	return p, true
 }
 
@@ -38,24 +39,30 @@ func (it Item) Progress() (Progress, bool) { return ParseProgress(it.ProgressJSO
 // TracksDone counts the tracks heard to the end.
 func (p Progress) TracksDone() int {
 	n := 0
+
 	for _, t := range p.Tracks {
 		if t.Done {
 			n++
 		}
 	}
+
 	return n
 }
 
 // SetProgress saves an item's progress; nil forgets it.
 func (s *Store) SetProgress(ctx context.Context, id int64, p *Progress) error {
 	raw := ""
+
 	if p != nil {
 		b, err := json.Marshal(p)
 		if err != nil {
 			return err
 		}
+
 		raw = string(b)
 	}
+
 	res, err := s.db.ExecContext(ctx, `UPDATE items SET progress = ? WHERE id = ?`, raw, id)
+
 	return affected(res, err)
 }

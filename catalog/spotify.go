@@ -36,9 +36,11 @@ const (
 func (s *Spotify) pageLimit() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.limit == 0 {
 		s.limit = maxPageLimit
 	}
+
 	return s.limit
 }
 
@@ -46,18 +48,27 @@ func (s *Spotify) pageLimit() int {
 func (s *Spotify) lowerLimit() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.limit != 0 && s.limit <= minPageLimit {
 		return false
 	}
+
 	s.limit = minPageLimit
+
 	return true
 }
 
 func (s *Spotify) albumsURL(artistID string) string {
-	u := fmt.Sprintf("%s/artists/%s/albums?include_groups=album,single,compilation&limit=%d", s.APIBase, url.PathEscape(artistID), s.pageLimit())
+	u := fmt.Sprintf(
+		"%s/artists/%s/albums?include_groups=album,single,compilation&limit=%d",
+		s.APIBase,
+		url.PathEscape(artistID),
+		s.pageLimit(),
+	)
 	if s.Market != "" {
 		u += "&market=" + url.QueryEscape(s.Market)
 	}
+
 	return u
 }
 
@@ -83,9 +94,15 @@ func (s *Spotify) Discography(ctx context.Context, artistID string) (Discography
 		Name   string         `json:"name"`
 		Images []spotifyImage `json:"images"`
 	}
-	if err := s.tokens.getJSON(ctx, fmt.Sprintf("%s/artists/%s", s.APIBase, url.PathEscape(artistID)), "", &a); err != nil {
+	if err := s.tokens.getJSON(
+		ctx,
+		fmt.Sprintf("%s/artists/%s", s.APIBase, url.PathEscape(artistID)),
+		"",
+		&a,
+	); err != nil {
 		return Discography{}, err
 	}
+
 	d := Discography{Artist: Artist{Name: a.Name}}
 	if len(a.Images) > 0 {
 		d.Artist.ImageURL = a.Images[0].URL // largest first
@@ -103,17 +120,22 @@ func (s *Spotify) Discography(ctx context.Context, artistID string) (Discography
 			} `json:"items"`
 			Next string `json:"next"`
 		}
+
 		err := s.tokens.getJSON(ctx, next, "", &res)
+
 		var he *httpError
 		if errors.As(err, &he) && he.Status == http.StatusBadRequest && page == 0 && s.lowerLimit() {
 			// Probably "limit too large": start over with the smaller page size.
 			next = s.albumsURL(artistID)
 			page--
+
 			continue
 		}
+
 		if err != nil {
 			return Discography{}, err
 		}
+
 		for _, it := range res.Items {
 			al := Album{
 				ID: it.ID, Title: it.Name, Artist: a.Name,
@@ -122,9 +144,12 @@ func (s *Spotify) Discography(ctx context.Context, artistID string) (Discography
 			if len(it.Images) > 0 {
 				al.CoverURL = it.Images[0].URL
 			}
+
 			d.Albums = append(d.Albums, al)
 		}
+
 		next = res.Next
 	}
+
 	return d, nil
 }

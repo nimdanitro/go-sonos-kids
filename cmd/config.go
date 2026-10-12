@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +29,8 @@ var conf = viper.New()
 var configFileUsed string
 
 // nestedKeys are flags that live under a section in the config file.
+//
+//nolint:gosec // G101: flag names, not credentials
 var nestedKeys = map[string]string{
 	"spotify-client-id":     "spotify.client_id",
 	"spotify-client-secret": "spotify.client_secret",
@@ -48,6 +51,7 @@ func flagKey(name string) string {
 	if key, ok := nestedKeys[name]; ok {
 		return key
 	}
+
 	return strings.ReplaceAll(name, "-", "_")
 }
 
@@ -71,7 +75,11 @@ func registerDBFlag(fs *pflag.FlagSet) {
 func registerServeFlags(fs *pflag.FlagSet) {
 	fs.String("addr", "127.0.0.1:8080", "listen address (use :8080 to allow other devices)")
 	registerDBFlag(fs)
-	fs.Bool("migrate-on-startup", true, "apply pending database migrations before starting (use --migrate-on-startup=false to run `migrate up` yourself)")
+	fs.Bool(
+		"migrate-on-startup",
+		true,
+		"apply pending database migrations before starting (use --migrate-on-startup=false to run `migrate up` yourself)",
+	)
 	fs.String("admin-token", "", "admin API token")
 	fs.String("country", "CH", "country code for artist import (only releases available there are listed)")
 	fs.String("spotify-client-id", "", "Spotify API client ID for artist import")
@@ -114,13 +122,20 @@ func dbPath(v *viper.Viper) (string, error) {
 	if path == "" {
 		dir, err := os.UserConfigDir()
 		if err != nil {
-			return "", err
+			// Typical in a container: no home directory to put it in.
+			return "", fmt.Errorf(
+				"no database path given and no user config directory to default to (%w); set --db or SONOSKIDS_DB",
+				err,
+			)
 		}
+
 		path = filepath.Join(dir, "sonoskids", "sonoskids.db")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return "", err
 	}
+
 	return path, nil
 }
 
@@ -128,8 +143,13 @@ func dbPath(v *viper.Viper) (string, error) {
 func configSearchPaths() []string {
 	paths := []string{"sonoskids.yaml", "sonoskids.yml"}
 	if dir, err := os.UserConfigDir(); err == nil {
-		paths = append(paths, filepath.Join(dir, "sonoskids", "config.yaml"), filepath.Join(dir, "sonoskids", "config.yml"))
+		paths = append(
+			paths,
+			filepath.Join(dir, "sonoskids", "config.yaml"),
+			filepath.Join(dir, "sonoskids", "config.yml"),
+		)
 	}
+
 	return paths
 }
 
@@ -149,11 +169,13 @@ func newConfig(flags *pflag.FlagSet) (v *viper.Viper, file, warning string, err 
 			err = v.BindPFlag(flagKey(f.Name), f)
 		}
 	})
+
 	for key, names := range legacyEnv {
 		if err == nil {
 			err = v.BindEnv(append([]string{key}, names...)...)
 		}
 	}
+
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -167,13 +189,17 @@ func newConfig(flags *pflag.FlagSet) (v *viper.Viper, file, warning string, err 
 			}
 		}
 	}
+
 	if file != "" {
 		v.SetConfigFile(file)
+
 		if err := v.ReadInConfig(); err != nil {
 			return nil, "", "", fmt.Errorf("reading config %s: %w", file, err)
 		}
+
 		warning = permissionWarning(v, file)
 	}
+
 	return v, file, warning, nil
 }
 
@@ -183,10 +209,13 @@ func initConfig(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+
 	conf, configFileUsed = v, file
+
 	if warning != "" {
 		fmt.Fprintln(os.Stderr, "warning:", warning)
 	}
+
 	return nil
 }
 
@@ -197,10 +226,10 @@ func permissionWarning(v *viper.Viper, file string) string {
 	if err != nil || info.Mode().Perm()&0o077 == 0 {
 		return ""
 	}
-	for _, key := range []string{"admin_token", "spotify.client_secret", "tidal.client_secret"} {
-		if v.InConfig(key) {
-			return fmt.Sprintf("%s contains secrets but is readable by other users; run: chmod 600 %s", file, file)
-		}
+
+	if slices.ContainsFunc([]string{"admin_token", "spotify.client_secret", "tidal.client_secret"}, v.InConfig) {
+		return fmt.Sprintf("%s contains secrets but is readable by other users; run: chmod 600 %s", file, file)
 	}
+
 	return ""
 }

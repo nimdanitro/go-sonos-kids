@@ -32,15 +32,18 @@ func NormalizeDate(s string) string {
 	if len(s) > 10 {
 		s = s[:10] // e.g. an ISO timestamp
 	}
+
 	switch len(s) {
 	case 4:
 		s += "-01-01"
 	case 7:
 		s += "-01"
 	}
+
 	if _, err := time.Parse("2006-01-02", s); err != nil {
 		return ""
 	}
+
 	return s
 }
 
@@ -71,6 +74,7 @@ func (f *Fetcher) Fetch(ctx context.Context, ref sonos.Ref) (Info, error) {
 	case sonos.Tidal:
 		return f.tidal(ctx, ref)
 	}
+
 	return Info{}, fmt.Errorf("no metadata source for %s", ref.Service.Name)
 }
 
@@ -79,24 +83,30 @@ func (f *Fetcher) get(ctx context.Context, u string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; sonoskids)")
+
 	resp, err := f.Client.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: HTTP %d", u, resp.StatusCode)
 	}
+
 	return io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 }
 
 func (f *Fetcher) spotify(ctx context.Context, ref sonos.Ref) (Info, error) {
 	target := fmt.Sprintf("https://open.spotify.com/%s/%s", ref.Kind, ref.ID)
+
 	body, err := f.get(ctx, f.SpotifyOEmbed+"?url="+url.QueryEscape(target))
 	if err != nil {
 		return Info{}, err
 	}
+
 	var o struct {
 		Title        string `json:"title"`
 		ThumbnailURL string `json:"thumbnail_url"`
@@ -104,6 +114,7 @@ func (f *Fetcher) spotify(ctx context.Context, ref sonos.Ref) (Info, error) {
 	if err := json.Unmarshal(body, &o); err != nil {
 		return Info{}, err
 	}
+
 	info := Info{Title: o.Title, CoverURL: o.ThumbnailURL}
 
 	// oEmbed has no artist or date; the public page does. Best effort.
@@ -118,6 +129,7 @@ func (f *Fetcher) spotify(ctx context.Context, ref sonos.Ref) (Info, error) {
 			}
 		}
 	}
+
 	return info, nil
 }
 
@@ -127,6 +139,7 @@ func metaContent(page []byte, key string) string {
 	if m := re.FindSubmatch(page); m != nil {
 		return html.UnescapeString(string(m[1]))
 	}
+
 	return ""
 }
 
@@ -138,6 +151,7 @@ func (f *Fetcher) tidal(ctx context.Context, ref sonos.Ref) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
+
 	info := Info{
 		Title:       metaContent(body, "og:title"),
 		CoverURL:    metaContent(body, "og:image"),
@@ -146,10 +160,12 @@ func (f *Fetcher) tidal(ctx context.Context, ref sonos.Ref) (Info, error) {
 	if info.Title == "" {
 		return Info{}, fmt.Errorf("no title found on Tidal page")
 	}
+
 	if ref.Kind != sonos.Playlist {
 		if artist, title, ok := strings.Cut(info.Title, " - "); ok {
 			info.Artist, info.Title = strings.TrimSpace(artist), strings.TrimSpace(title)
 		}
 	}
+
 	return info, nil
 }

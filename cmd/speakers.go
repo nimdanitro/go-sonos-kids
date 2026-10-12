@@ -11,7 +11,9 @@ var speakersCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
 		printGroups(groups)
+
 		return nil
 	},
 }

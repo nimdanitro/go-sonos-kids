@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"maps"
 	"reflect"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ func nearEnd(position, duration int) bool {
 	if duration <= 0 {
 		return false
 	}
+
 	return position >= duration-min(doneMargin, duration/10)
 }
 
@@ -34,9 +36,8 @@ func updateProgress(p store.Progress, st PlayerStatus) store.Progress {
 	}
 	// Copy the map: p may be shared with the caller's copy.
 	tracks := make(map[int]store.TrackProgress, len(p.Tracks)+1)
-	for n, t := range p.Tracks {
-		tracks[n] = t
-	}
+	maps.Copy(tracks, p.Tracks)
+
 	p.Tracks = tracks
 
 	// Moving on from a track that was heard (nearly) to the end marks it done.
@@ -49,23 +50,29 @@ func updateProgress(p store.Progress, st PlayerStatus) store.Progress {
 	}
 
 	cur := p.Tracks[st.Track]
+
 	cur.Title = st.Title
 	if st.DurationSec > 0 {
 		cur.Duration = st.DurationSec
 	}
+
 	cur.Position = st.PositionSec / stepSize * stepSize
 	if nearEnd(st.PositionSec, cur.Duration) {
 		cur.Done = true
 		cur.Position = st.PositionSec // keep the exact value: it is what proves the track was heard
 	}
+
 	p.Tracks[st.Track] = cur
+
 	p.Last = st.Track
 	if st.NumTracks > 0 {
 		p.Total = st.NumTracks
 	}
+
 	if p.Total > 0 && st.Track == p.Total && cur.Done {
 		p.Completed = true // sticky: replays start fresh progress instead
 	}
+
 	return p
 }
 
@@ -75,17 +82,21 @@ func resumePoint(p store.Progress) *sonos.Resume {
 	if p.Completed || p.Last < 1 {
 		return nil
 	}
+
 	t := p.Tracks[p.Last]
 	if t.Done { // stopped between tracks: continue with the next one
 		if p.Total > 0 && p.Last >= p.Total {
 			return nil
 		}
+
 		return &sonos.Resume{Track: p.Last + 1}
 	}
+
 	pos := max(0, t.Position-rewind)
 	if p.Last == 1 && pos < resumeMin {
 		return nil
 	}
+
 	return &sonos.Resume{Track: p.Last, Position: time.Duration(pos) * time.Second}
 }
 
@@ -96,10 +107,12 @@ func fractionOf(st PlayerStatus) (fraction float64, ok bool) {
 	if st.Track < 1 || st.DurationSec <= 0 {
 		return 0, false
 	}
+
 	within := min(1, float64(st.PositionSec)/float64(st.DurationSec))
 	if st.NumTracks > 0 {
 		return min(1, (float64(st.Track-1)+within)/float64(st.NumTracks)), true
 	}
+
 	return within, true
 }
 
@@ -116,10 +129,12 @@ type progressJSON struct {
 func toProgress(p store.Progress) progressJSON {
 	t := p.Tracks[p.Last]
 	out := progressJSON{Track: p.Last, Total: p.Total, Position: t.Position, Title: t.Title, Completed: p.Completed}
+
 	within := 0.0
 	if t.Duration > 0 {
 		within = min(1, float64(t.Position)/float64(t.Duration))
 	}
+
 	switch {
 	case p.Completed:
 		out.Fraction = 1
@@ -128,6 +143,7 @@ func toProgress(p store.Progress) progressJSON {
 	default:
 		out.Fraction = within
 	}
+
 	return out
 }
 
@@ -146,14 +162,33 @@ type nowPlaying struct {
 func (s *Server) startedPlaying(profileID int64, it store.Item) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if it.Category != store.CategoryAudiobook {
 		delete(s.playing, profileID)
 		return
 	}
+
 	if s.playing == nil {
 		s.playing = map[int64]*nowPlaying{}
 	}
+
 	s.playing[profileID] = &nowPlaying{itemID: it.ID}
+}
+
+// trackedItem is the audiobook this server started for the profile and that is
+// still what its speaker is playing, if any. The kids' UI offers "start over"
+// only for it: music and playlists have nothing to resume or restart, and an
+// album started from the Sonos app is not this item any more.
+func (s *Server) trackedItem(profileID int64) (itemID int64, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	np := s.playing[profileID]
+	if np == nil {
+		return 0, false
+	}
+
+	return np.itemID, true
 }
 
 // recordProgress saves how far the profile's audiobook has got. It is called
@@ -163,12 +198,15 @@ func (s *Server) recordProgress(ctx context.Context, profileID int64, st PlayerS
 	if st.State != "PLAYING" && st.State != "PAUSED_PLAYBACK" {
 		return // stopped or starting up: positions are not meaningful
 	}
+
 	s.mu.Lock()
+
 	np := s.playing[profileID]
 	if np == nil {
 		s.mu.Unlock()
 		return
 	}
+
 	switch {
 	case !np.anchored:
 		np.album, np.anchored = st.Album, true
@@ -176,8 +214,10 @@ func (s *Server) recordProgress(ctx context.Context, profileID int64, st PlayerS
 		// A different album is playing: someone used the Sonos app. Stop attributing it to this item.
 		delete(s.playing, profileID)
 		s.mu.Unlock()
+
 		return
 	}
+
 	itemID := np.itemID
 	s.mu.Unlock()
 
@@ -185,10 +225,13 @@ func (s *Server) recordProgress(ctx context.Context, profileID int64, st PlayerS
 	if err != nil {
 		return
 	}
+
 	before, _ := it.Progress()
+
 	after := updateProgress(before, st)
 	if reflect.DeepEqual(before, after) {
 		return
 	}
+
 	_ = s.store.SetProgress(ctx, itemID, &after) // best effort
 }

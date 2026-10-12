@@ -29,28 +29,36 @@ func printGroups(groups []sonos.Group) {
 // IP), or asks interactively when none is set.
 func pickGroup(ctx context.Context, in *bufio.Reader) (sonos.Group, error) {
 	want := conf.GetString("speaker")
+
 	groups, err := discoverGroups(ctx)
 	if err != nil {
 		return sonos.Group{}, err
 	}
+
 	if want != "" {
 		for _, g := range groups {
 			if g.Matches(want) {
 				return g, nil
 			}
 		}
+
 		return sonos.Group{}, fmt.Errorf("no group or room matching %q", want)
 	}
+
 	printGroups(groups)
+
 	idx, err := strconv.Atoi(prompt(in, "Select number: "))
 	if err != nil || idx < 1 || idx > len(groups) {
 		return sonos.Group{}, fmt.Errorf("invalid selection")
 	}
+
 	return groups[idx-1], nil
 }
 
 func prompt(in *bufio.Reader, msg string) string {
 	fmt.Print(msg)
+
 	line, _ := in.ReadString('\n')
+
 	return strings.TrimSpace(line)
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"sync"
@@ -54,11 +55,21 @@ type Server struct {
 }
 
 func New(o Options) *Server {
-	s := &Server{store: o.Store, player: o.Player, meta: o.Meta, catalog: o.Catalog, token: o.AdminToken, mux: http.NewServeMux(), coverTimeout: o.CoverTimeout}
+	s := &Server{
+		store:        o.Store,
+		player:       o.Player,
+		meta:         o.Meta,
+		catalog:      o.Catalog,
+		token:        o.AdminToken,
+		mux:          http.NewServeMux(),
+		coverTimeout: o.CoverTimeout,
+	}
 	if s.coverTimeout == 0 {
 		s.coverTimeout = 8 * time.Second
 	}
+
 	s.routes()
+
 	return s
 }
 
@@ -66,7 +77,10 @@ func (s *Server) Handler() http.Handler { return s.mux }
 
 func (s *Server) routes() {
 	m := s.mux
-	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
+	m.HandleFunc(
+		"GET /healthz",
+		func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) },
+	)
 
 	// Kids' API: no searching, only what the admin put in their library.
 	m.HandleFunc("GET /api/profiles", s.listProfiles)
@@ -74,6 +88,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/profiles/{id}/status", s.status)
 	m.HandleFunc("POST /api/profiles/{id}/play", s.play)
 	m.HandleFunc("POST /api/profiles/{id}/volume", s.volume)
+
 	for _, action := range []string{"pause", "resume", "next", "previous"} {
 		m.HandleFunc("POST /api/profiles/{id}/"+action, s.control(action))
 	}
@@ -124,12 +139,23 @@ type itemJSON struct {
 }
 
 func toItem(it store.Item) itemJSON {
-	out := itemJSON{ID: it.ID, Category: it.Category, Title: it.Title, CoverURL: it.CoverURL, Artist: it.Artist,
-		ReleaseDate: it.ReleaseDate, Played: it.PlayedAt != "", PlayedAt: it.PlayedAt, Service: it.Service, Kind: it.Kind}
+	out := itemJSON{
+		ID:          it.ID,
+		Category:    it.Category,
+		Title:       it.Title,
+		CoverURL:    it.CoverURL,
+		Artist:      it.Artist,
+		ReleaseDate: it.ReleaseDate,
+		Played:      it.PlayedAt != "",
+		PlayedAt:    it.PlayedAt,
+		Service:     it.Service,
+		Kind:        it.Kind,
+	}
 	if p, ok := it.Progress(); ok && it.Category == store.CategoryAudiobook {
 		pj := toProgress(p)
 		out.Progress = &pj
 	}
+
 	return out
 }
 
@@ -138,6 +164,7 @@ func toItems(items []store.Item) []itemJSON {
 	for _, it := range items {
 		out = append(out, toItem(it))
 	}
+
 	return out
 }
 
@@ -146,7 +173,10 @@ func toItems(items []store.Item) []itemJSON {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("encoding response", slog.Any("error", err))
+	}
 }
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
@@ -159,6 +189,7 @@ func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 		writeErr(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return false
 	}
+
 	return true
 }
 
@@ -168,6 +199,7 @@ func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 		writeErr(w, http.StatusBadRequest, "invalid id")
 		return 0, false
 	}
+
 	return id, true
 }
 
@@ -189,11 +221,13 @@ func (s *Server) profile(w http.ResponseWriter, r *http.Request) (store.Profile,
 	if !ok {
 		return store.Profile{}, false
 	}
+
 	p, err := s.store.GetProfile(r.Context(), id)
 	if err != nil {
 		storeErr(w, err)
 		return store.Profile{}, false
 	}
+
 	return p, true
 }
 

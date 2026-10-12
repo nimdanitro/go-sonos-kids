@@ -65,12 +65,15 @@ func ParseArtistLink(link string) (service, id string, err error) {
 	if m := spotifyArtistURL.FindStringSubmatch(link); m != nil {
 		return "spotify", m[1], nil
 	}
+
 	if m := spotifyArtistURI.FindStringSubmatch(link); m != nil {
 		return "spotify", m[1], nil
 	}
+
 	if m := tidalArtistURL.FindStringSubmatch(link); m != nil {
 		return "tidal", m[1], nil
 	}
+
 	return "", "", ErrBadLink
 }
 
@@ -79,6 +82,7 @@ func DisplayName(service string) string {
 	if service == "" {
 		return ""
 	}
+
 	return strings.ToUpper(service[:1]) + service[1:]
 }
 
@@ -93,24 +97,30 @@ func (s Service) Discography(ctx context.Context, link string) (Discography, err
 	if err != nil {
 		return Discography{}, err
 	}
+
 	p, ok := s.Providers[svc]
 	if !ok || p == nil {
 		return Discography{}, NotConfiguredError{Service: DisplayName(svc)}
 	}
+
 	d, err := p.Discography(ctx, id)
 	if err != nil {
 		return Discography{}, err
 	}
+
 	d.Service = svc
 	sort.SliceStable(d.Albums, func(i, j int) bool {
 		a, b := d.Albums[i], d.Albums[j]
 		if (a.ReleaseDate == "") != (b.ReleaseDate == "") {
 			return a.ReleaseDate != "" // undated last
 		}
+
 		if a.ReleaseDate != b.ReleaseDate {
 			return a.ReleaseDate < b.ReleaseDate
 		}
+
 		return strings.ToLower(a.Title) < strings.ToLower(b.Title)
 	})
+
 	return d, nil
 }

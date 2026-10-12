@@ -29,11 +29,14 @@ func DiscoverGroups(ctx context.Context, opt DiscoverOptions) ([]Group, error) {
 	if opt.Timeout == 0 {
 		opt.Timeout = 3 * time.Second
 	}
+
 	if !opt.NoCache {
 		for _, sp := range loadCachedSpeakers() {
 			cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			groups, err := sp.Topology(cctx)
+
 			cancel()
+
 			if err == nil && len(groups) > 0 {
 				saveCachedSpeakers(groups)
 				return groups, nil
@@ -42,22 +45,28 @@ func DiscoverGroups(ctx context.Context, opt DiscoverOptions) ([]Group, error) {
 	}
 
 	opt.logf("Searching for Sonos speakers...")
+
 	speakers, err := Discover(ctx, opt.Timeout)
 	if err != nil {
 		return nil, err
 	}
+
 	if len(speakers) == 0 {
 		return nil, fmt.Errorf("no speakers found (same network/VLAN? multicast allowed?)")
 	}
+
 	var topoErr error
+
 	for _, sp := range speakers {
 		groups, err := sp.Topology(ctx)
 		if err == nil && len(groups) > 0 {
 			saveCachedSpeakers(groups)
 			return groups, nil
 		}
+
 		topoErr = err
 	}
+
 	return nil, fmt.Errorf("reading zone group topology: %w", topoErr)
 }
 
@@ -69,6 +78,7 @@ func cachePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return filepath.Join(dir, "sonoskids", "speakers.json"), nil
 }
 
@@ -77,14 +87,17 @@ func loadCachedSpeakers() []Speaker {
 	if err != nil {
 		return nil
 	}
-	data, err := os.ReadFile(path)
+
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path is the app's own cache file
 	if err != nil {
 		return nil
 	}
+
 	var sp []Speaker
 	if json.Unmarshal(data, &sp) != nil {
 		return nil
 	}
+
 	return sp
 }
 
@@ -94,8 +107,11 @@ func saveCachedSpeakers(groups []Group) {
 	if err != nil {
 		return
 	}
+
 	seen := map[string]bool{}
+
 	var sp []Speaker
+
 	for _, g := range groups {
 		for _, m := range g.Members {
 			if !seen[m.IP] {
@@ -104,11 +120,13 @@ func saveCachedSpeakers(groups []Group) {
 			}
 		}
 	}
+
 	data, err := json.MarshalIndent(sp, "", "  ")
 	if err != nil {
 		return
 	}
-	if os.MkdirAll(filepath.Dir(path), 0o755) == nil {
-		_ = os.WriteFile(path, data, 0o644)
+
+	if os.MkdirAll(filepath.Dir(path), 0o750) == nil {
+		_ = os.WriteFile(path, data, 0o600)
 	}
 }
