@@ -180,11 +180,13 @@ jobs:
           done <<< "$LABELS"
           echo "Building $VERSION with tags: $tags"
 
-          # 1. Build both architectures without pushing, and prove the image
-          #    starts and serves before anything is published.
-          ko build --bare --push=false --platform=linux/amd64,linux/arm64 \
-            --tags "$tags" "${labels[@]}" .
-          scripts/smoke-test-image.sh "$KO_DOCKER_REPO:${tags%%,*}"
+          # 1. Prove the image starts and serves before anything is published.
+          #    A multi-platform build cannot be loaded into the local Docker
+          #    daemon, so the runner's own platform is built and run here; both
+          #    architectures are built in step 2.
+          KO_DOCKER_REPO=ko.local ko build --bare --local --platform=linux/amd64 \
+            --tags smoke "${labels[@]}" .
+          scripts/smoke-test-image.sh ko.local:smoke
 
           # 2. Publish, except from pull requests (which cannot write packages).
           if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
